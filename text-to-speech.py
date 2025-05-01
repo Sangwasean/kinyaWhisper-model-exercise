@@ -1,10 +1,6 @@
-import re
 import os
-import time
-from fuzzywuzzy import fuzz
 from gtts import gTTS
 
-os.makedirs("audio_outputs", exist_ok=True)
 QA_PAIRS = {
     "Rwanda Coding Academy iherereye he?": "Iherereye mu Karere ka Nyabihu, mu Ntara y’Iburengerazuba.",
     "Umurwa mukuru w’u Rwanda ni uwuhe?": "Ni Kigali.",
@@ -12,57 +8,52 @@ QA_PAIRS = {
     "Imbwa niki?": "Ni inyamaswa.",
     "Ngewe banyita nde?": "Bakwita Sean."
 }
-DEFAULT_RESPONSE = "Ntago mbyumva neza."
+
+OUTPUT_DIR = "audio_outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def normalize(text):
-    return re.sub(r'[^\w\s]', '', text.lower()).strip()
+def generate_all_answer_audios():
+    results = []
 
+    for idx, (question, answer) in enumerate(QA_PAIRS.items(), 1):
+        filename = f"answer_{idx}.mp3"
+        output_path = os.path.join(OUTPUT_DIR, filename)
+        success = False
 
-def find_best_match(question):
-    if not question:
-        return DEFAULT_RESPONSE, None
+        try:
+            tts = gTTS(text=answer, lang='rw', slow=False)
+            tts.save(output_path)
+            success = True
+        except Exception as e:
+            try:
+                tts = gTTS(text=answer, lang='sw', slow=False)
+                tts.save(output_path)
+                success = True
+            except:
+                try:
+                    tts = gTTS(text=answer, lang='sw', slow=False)
+                    tts.save(output_path)
+                    success = True
+                except Exception as final_error:
+                    error_msg = str(final_error)
 
-    clean_question = normalize(question)
-    best_match = None
-    highest_score = 0
+        results.append({
+            "question": question,
+            "answer": answer,
+            "filename": filename,
+            "success": success,
+            "error": error_msg if not success else None
+        })
 
-    for possible_question in QA_PAIRS:
-        score = fuzz.ratio(normalize(possible_question), clean_question)
-        if score > highest_score and score > 60:  # Lowered threshold for better matching
-            highest_score = score
-            best_match = possible_question
+    return results
 
-    return (QA_PAIRS[best_match], best_match) if best_match else (DEFAULT_RESPONSE, None)
+generation_report = generate_all_answer_audios()
 
+print(f"{'Status':<8} | {'Question':<45} | {'Filename':<20}")
+print("-" * 80)
+for item in generation_report:
+    status = "✅" if item['success'] else "❌"
+    print(f"{status:<8} | {item['question']:<45} | {item['filename']:<20}")
 
-def generate_response(answer_text):
-    """Generate and save TTS response with fallback handling"""
-    try:
-        # First attempt Kinyarwanda (even if unsupported)
-        tts = gTTS(text=answer_text, lang='rw', slow=False)
-    except ValueError:
-        # Fallback to English if Kinyarwanda fails
-        tts = gTTS(text=answer_text, lang='en')
-
-    timestamp = str(int(time.time()))
-    output_path = f"audio_outputs/response_{timestamp}.mp3"
-    tts.save(output_path)
-    return output_path
-
-
-# Usage example (assuming transcribed_text comes from your ASR system)
-if __name__ == "__main__":
-    # Simulated input from your transcription system
-    transcribed_text = "Rwanda Coding Academy iherereye he?"
-
-    # Find matching answer
-    answer, matched_question = find_best_match(transcribed_text)
-
-    # Generate audio response
-    audio_path = generate_response(answer)
-
-    print(f"Question: {transcribed_text}")
-    print(f"Matched Question: {matched_question}")
-    print(f"Answer: {answer}")
-    print(f"Audio response saved to: {audio_path}")
+print(f"\nOutput directory: {os.path.abspath(OUTPUT_DIR)}")
